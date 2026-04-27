@@ -12,7 +12,7 @@ key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inll
 supabase = create_client(url, key)
 
 # ---------------- PAGE ----------------
-st.set_page_config(page_title="JSW Login", layout="wide")
+st.set_page_config(page_title="Admin Login", layout="wide")
 st.markdown("""
   <style>
   /* warning box */
@@ -104,9 +104,9 @@ div[data-testid="stTextInput"] {
 
 .block-container {
     padding-top: 2rem;
-    padding-left: 2rem;
+    padding-left: 1rem;
     padding-right: 2rem;
-    max-width: 100% !important;
+    max-width: 80% !important;
 }
 
 
@@ -133,7 +133,7 @@ div[role="listbox"] {
 # ---------------- LOGIN PAGE ----------------
 if st.session_state.page == "login":
     st.markdown(
-    "<h2 style='color: #1e7df0;'>Login</h2>",
+    "<h2 style='color: #1e7df0;'>Admin Login</h2>",
     unsafe_allow_html=True
 )
 
@@ -161,12 +161,17 @@ if st.session_state.page == "login":
 
     with col2:
         if st.button("NEW REGISTER", use_container_width=True):
-            st.session_state.page = "register"
-            st.rerun()
+            st.warning("Please contact admin to create your account.")
 
 # ---------------- REGISTER PAGE ----------------
 elif st.session_state.page == "dashboard":
+    st.markdown("""
+    <div style='text-align:center; margin-top:-10px; margin-bottom:20px;'>
+        <h1 style='color:#2E86C1;'>🏢 Admin Application</h1>
+    </div>
+    """, unsafe_allow_html=True)
 
+   
     import requests
 
     # default selected menu
@@ -178,10 +183,10 @@ elif st.session_state.page == "dashboard":
     # ---------------- TOP MENU BUTTONS ----------------
     depo_color = "#ED1C24" if selected == "DEPO" else "#0067B8"
     dealer_color = "#ED1C24" if selected == "DEALER" else "#0067B8"
-    route_color = "#ED1C24" if selected == "ROUTE" else "#0067B8"
+    monitor_color = "#ED1C24" if selected == "MONITOR" else "#0067B8"
     dashboard_color = "#ED1C24" if selected == "DASHBOARD" else "#0067B8"
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns([1,1,1,1,0.8])
 
     with col1:
       label = "🔴 DEPO" if selected == "DEPO" else "DEPO"
@@ -196,16 +201,26 @@ elif st.session_state.page == "dashboard":
         st.rerun()
 
     with col3:
-      label = "🔴 ROUTE" if selected == "ROUTE" else "ROUTE"
-      if st.button(label, key="route_btn", use_container_width=True):
-        st.session_state.selected_menu = "ROUTE"
+      label = "🔴 MONITOR" if selected == "MONITOR" else "MONITOR"
+      if st.button(label, key="monitor_btn", use_container_width=True):
+        st.session_state.selected_menu = "MONITOR"   # ✅ FIXED
         st.rerun()
-
+   
     with col4:
       label = "🔴 DASHBOARD" if selected == "DASHBOARD" else "DASHBOARD"
       if st.button(label, key="dashboard_btn", use_container_width=True):
         st.session_state.selected_menu = "DASHBOARD"
         st.rerun()
+    with col5:
+        if st.button("🚪 Logout", use_container_width=True):
+            try:
+                 supabase.auth.sign_out()
+            except:
+                pass
+
+            st.session_state.clear()
+            st.session_state.page = "login"
+            st.rerun()
 
     st.markdown("""
     <style>
@@ -1930,3 +1945,301 @@ elif st.session_state.page == "dashboard":
                  )
 
                  st.plotly_chart(fig, use_container_width=True)
+    # ---------------- MONITOR PAGE ----------------
+    elif selected == "MONITOR":
+
+    # ---------- TAB STYLE ----------
+        st.markdown("""
+        <style>
+        button[data-baseweb="tab"] {
+            color: #333 !important;
+            font-weight: 600 !important;
+            font-size: 15px !important;
+            background: none !important;
+        }
+
+        button[data-baseweb="tab"][aria-selected="true"] {
+            color: #ED1C24 !important;
+            border-bottom: 2px solid #ED1C24 !important;
+        }
+        
+       
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # ---------- TEXT TABS ----------
+        tab1, tab2, tab3 = st.tabs(["Damage", "Attendance", "CCTV"])
+
+        # 🚨 DAMAGE
+        with tab1:
+            st.title("🧑‍💼 Damage Approval")
+
+# -------- FETCH PENDING REQUESTS --------
+            def get_requests():
+                return supabase.table("damage_requests") \
+                    .select("*") \
+                    .eq("status", "pending") \
+                    .execute().data
+
+            data = get_requests()
+            data = [req for req in data if req["status"] == "pending"]
+            if not data:
+                st.success("✅ No pending requests")
+
+            else:
+                for req in data:
+
+                    st.markdown("---")
+
+                    st.write(f"📦 Product: {req['product_name']} ({req['product_id']})")
+                    st.write(f"🏭 Depot: {req['depot_id']}")
+                    st.write(f"🔢 Qty: {req['quantity']}")
+                    st.write(f"⚠️ Type: {req['damage_type']}")
+                    st.write(f"📝 Remarks: {req['remarks']}")
+
+                    col1, col2 = st.columns(2)
+
+                    # -------- APPROVE --------
+                    with col1:
+                        if st.button("✅ Approve", key=f"approve_{req['id']}", type="secondary"):
+                            try:
+                                depot_id = req["depot_id"]
+                                product_id = req["product_id"]
+
+                                # 🔹 STEP 1: Fetch stock FIRST
+                                stock = supabase.table("depot_stock") \
+                                    .select("*") \
+                                    .eq("product_code", product_id) \
+                                    .eq("depot_code", depot_id) \
+                                    .eq("row_no", req["row_no"]) \
+                                    .eq("column_no", req["column_no"]) \
+                                    .execute().data[0]
+
+                                # 🔹 STEP 2: Validate
+                                if req["quantity"] > stock["number_of_bags"]:
+                                    st.error("❌ Not enough stock")
+                                    st.stop()
+
+                                # 🔹 STEP 3: Update stock
+                                new_good = stock["number_of_bags"] - req["quantity"]
+                                new_damaged = stock["damaged_bags"] + req["quantity"]
+
+                                supabase.table("depot_stock").update({
+                                    "number_of_bags": new_good,
+                                    "damaged_bags": new_damaged
+                                }).eq("product_code", product_id) \
+                                .eq("depot_code", depot_id) \
+                                .eq("row_no", req["row_no"]) \
+                                .eq("column_no", req["column_no"]) \
+                                .execute()
+
+                                # 🔹 STEP 4: Update request (ONLY ONCE, at END)
+                                res = supabase.table("damage_requests").update({
+                                    "status": "approved"
+                                }).eq("id", req["id"]).execute()
+
+                                # 🔹 DEBUG (temporary)
+                                st.write(res)
+
+                                st.success("✅ Approved")
+                                st.rerun()
+
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+
+                    # -------- REJECT --------
+                    with col2:
+                        if st.button("❌ Reject", key=f"reject_{req['id']}", type="secondary"):
+                            supabase.table("damage_requests").update({
+                                "status": "rejected"
+                            }).eq("id", req["id"]).execute()
+
+                            st.warning("❌ Rejected")
+                            st.rerun()
+            st.markdown("---")
+            st.subheader("📊 Approved Damage (Stock Cleared)")
+
+            # 🔹 Get depot list
+            depots = supabase.table("depot_master").select("depot_code").execute().data
+            depot_list = [d["depot_code"] for d in depots]
+
+            # 🔹 Dropdown filter
+            depot_filter = st.selectbox("Select Depot", ["All"] + depot_list)
+
+            # 🔹 STEP 1: DEFINE QUERY FIRST
+            query = supabase.table("damage_requests") \
+                .select("*") \
+                .eq("status", "approved")
+
+            # 🔹 STEP 2: APPLY FILTER
+            if depot_filter != "All":
+                query = query.eq("depot_id", depot_filter)
+
+            # 🔹 STEP 3: EXECUTE
+            approved_data = query.execute().data
+
+            # 🔹 DISPLAY
+            if not approved_data:
+                st.info("No approved damage records")
+
+            else:
+                for req in approved_data:
+                    st.markdown("---")
+
+                    st.write(f"📦 Product: {req['product_name']} ({req['product_id']})")
+                    st.write(f"🏭 Depot: {req['depot_id']}")
+                    st.write(f"🔢 Qty: {req['quantity']}")
+                    st.write(f"⚠️ Type: {req['damage_type']}")
+                    st.write(f"📝 Remarks: {req['remarks']}")
+                    st.write(f"📅 Date: {req['created_at']}")
+                    col1, col2 = st.columns(2)
+
+    # 🗑️ DISPOSE BUTTON
+                    with col2:
+                        if st.button("🗑️ Dispose", key=f"dispose_{req['id']}", type="secondary"):
+                            try:
+                                depot_id = req["depot_id"]
+                                product_id = req["product_id"]
+
+                                # 🔹 Fetch stock
+                                stock = supabase.table("depot_stock") \
+                                    .select("*") \
+                                    .eq("product_code", product_id) \
+                                    .eq("depot_code", depot_id) \
+                                    .eq("row_no", req["row_no"]) \
+                                    .eq("column_no", req["column_no"]) \
+                                    .execute().data[0]
+
+                                # 🔹 Validate
+                                if req["quantity"] > stock["damaged_bags"]:
+                                    st.error("❌ Not enough damaged stock")
+                                    st.stop()
+
+                                # 🔹 Update damaged stock
+                                new_damaged = stock["damaged_bags"] - req["quantity"]
+
+                                supabase.table("depot_stock").update({
+                                    "damaged_bags": new_damaged
+                                }).eq("product_code", product_id) \
+                                .eq("depot_code", depot_id) \
+                                .eq("row_no", req["row_no"]) \
+                                .eq("column_no", req["column_no"]) \
+                                .execute()
+
+                                # 🔹 Update request status → disposed
+                                supabase.table("damage_requests").update({
+                                    "status": "disposed"
+                                }).eq("id", req["id"]).execute()
+
+                                st.success("🗑️ Disposed successfully")
+                                st.rerun()
+
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+        # 🧑 ATTENDANCE
+        with tab2:
+            
+
+           
+            import pandas as pd
+            import math
+
+            st.markdown("### 📍 Live Employee Tracking + Attendance")
+
+            # -------- FETCH DEPOT LIST --------
+            depot_res = supabase.table("depot_master") \
+                .select("depot_code, latitude, longitude") \
+                .execute()
+
+            depot_list = depot_res.data
+
+            if not depot_list:
+                st.error("No depot data found")
+                st.stop()
+
+            depot_codes = [d["depot_code"] for d in depot_list]
+
+            # -------- SELECT DEPOT --------
+            DEPOT_ID = st.selectbox("🏭 Select Depot", depot_codes)
+
+            # get selected depot lat/lon
+            depot_data = next(d for d in depot_list if d["depot_code"] == DEPOT_ID)
+            depot_lat = float(depot_data["latitude"])
+            depot_lon = float(depot_data["longitude"])
+
+            st.info(f"📌 Depot Location: {depot_lat}, {depot_lon}")
+
+            # -------- FETCH EMPLOYEE LOCATIONS --------
+            res = supabase.table("employee_location") \
+                .select("emp_id, latitude, longitude, updated_at") \
+                .eq("depot_code", DEPOT_ID) \
+                .order("updated_at", desc=True) \
+                .execute()
+
+            data = res.data
+
+            if not data:
+                st.warning("No employee data")
+                st.stop()
+
+            df = pd.DataFrame(data)
+
+            # latest per employee
+            df = df.sort_values("updated_at", ascending=False) \
+                .drop_duplicates(subset=["emp_id"])
+
+            # -------- DISTANCE FUNCTION --------
+            def calculate_distance(lat1, lon1, lat2, lon2):
+                R = 6371  # km
+
+                dlat = math.radians(lat2 - lat1)
+                dlon = math.radians(lon2 - lon1)
+
+                a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * \
+                    math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+
+                c = 2 * math.asin(math.sqrt(a))
+                return R * c  # km
+
+            # -------- CHECK NEAR/FAR --------
+            THRESHOLD_KM = 0.5   # 👈 500 meters
+
+            status_list = []
+            distance_list = []
+
+            for _, row in df.iterrows():
+
+                emp_lat = float(row["latitude"])
+                emp_lon = float(row["longitude"])
+
+                dist = calculate_distance(depot_lat, depot_lon, emp_lat, emp_lon)
+
+                distance_list.append(round(dist, 3))
+
+                if dist <= THRESHOLD_KM:
+                    status_list.append("🟢 Present")
+                else:
+                    status_list.append("🔴 Not Present")
+
+            df["distance_km"] = distance_list
+            df["status"] = status_list
+
+            # rename for map
+            map_df = df.rename(columns={"latitude": "lat", "longitude": "lon"})
+
+            # -------- MAP --------
+            st.map(map_df)
+
+            # -------- RESULT --------
+            st.markdown("### 👨‍🏭 Attendance Status")
+            st.dataframe(df, use_container_width=True)
+
+            # -------- SUMMARY --------
+            present_count = df[df["status"] == "🟢 Present"].shape[0]
+            total = len(df)
+
+            st.success(f"Present: {present_count} / {total}")
+        # 📷 CCTV
+        with tab3:
+            st.markdown("### CCTV Monitoring")
+            st.text_input("Camera URL")
